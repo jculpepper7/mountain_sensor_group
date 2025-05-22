@@ -47,3 +47,9 @@ po/*~
 
 # RStudio Connect folder
 rsconnect/
+
+# Ignore large files and image outputs
+*.csv
+*.xlsx
+*.png
+*.pdf
