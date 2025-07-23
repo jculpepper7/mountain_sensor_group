@@ -7,6 +7,6 @@
 ## [ADD Location of data such as EDI link]
 
 
-# Access to Gridet data through Google Earth Engine -----------------------
+# Access to Gridmet data through Google Earth Engine -----------------------
 
 ##https://code.earthengine.google.com/c11d90f904f3ee4b186dbe90dd86ba16

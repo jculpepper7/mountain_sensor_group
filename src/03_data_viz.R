@@ -24,7 +24,13 @@ library(rnaturalearthdata)
 clim <- read_csv(here('data/gridmet_clean.csv')) %>% 
   #convert lake column to factor
   mutate(
-    lake = as.factor(lake)
+    lake = as.factor(lake),
+    snow_cm = if_else(
+      tmean_c <= 0, pr_cm, 0
+    )
+  ) %>% 
+  arrange(
+    lake
   )
 
 
@@ -34,7 +40,7 @@ clim_season <- clim %>%
   #Add water year and seasonal variables
   mutate(
     w_year = if_else(
-      year(date) >= 10, year(date) +1, year(date)
+      month(date) >= 10, year(date) +1, year(date)
     ),
     #Add seasons
     season = as.factor(
@@ -57,7 +63,17 @@ clim_season <- clim %>%
     tmin_mean = mean(tmin_c, na.rm = T),
     tmax_mean = mean(tmax_c, na.rm = T),
     tmean_mean = mean(tmean_c, na.rm = T),
-    pr_mean_mm = mean(pr_cm, na.rm = T)*10
+    pr_mean_mm = mean(pr_cm, na.rm = T)*10,
+    cumsum_precip = sum(pr_mean_mm, na.rm = T),
+    snow_mean_mm = mean(snow_cm, na.rm = T)*10,
+    cumsum_snow = sum(snow_mean_mm, na.rm = T)
+  ) %>% 
+  group_by(lake, w_year) %>% 
+  mutate(
+    annual_precip_mm = sum(cumsum_precip),
+    precip_frac = cumsum_precip/annual_precip_mm,
+    annual_snow_mm = sum(cumsum_snow),
+    snow_frac = cumsum_snow/annual_snow_mm
   )
 
 # 4. Calculate means and trends -------------------------------------------
@@ -70,7 +86,8 @@ clim_sum <- clim_season %>%
     tmin_mean_s = mean(tmin_mean, na.rm = T),
     tmax_mean_s = mean(tmax_mean, na.rm = T),
     tmean_mean_s = mean(tmean_mean, na.rm = T),
-    pr_mean_mm_s = mean(pr_mean_mm, na.rm = T),
+    pr_mean_mm_s = mean(cumsum_precip, na.rm = T),
+    snow_mean_mm_s = mean(cumsum_snow, na.rm = T),
     #Calculate trends (p.value and slope)
     tmin_pval = mannKen(tmin_mean)$p.value,
     tmin_trend = mannKen(tmin_mean)$sen.slope,
@@ -78,8 +95,13 @@ clim_sum <- clim_season %>%
     tmax_trend = mannKen(tmax_mean)$sen.slope,
     tmean_pval = mannKen(tmean_mean)$p.value,
     tmean_trend = mannKen(tmean_mean)$sen.slope,
-    pr_pval = mannKen(pr_mean_mm)$p.value,
-    pr_trend = mannKen(pr_mean_mm)$sen.slope,
+    # pr_pval = mannKen(pr_mean_mm)$p.value,
+    # pr_trend = mannKen(pr_mean_mm)$sen.slope,
+    #Cumulative sum may be more useful than the average
+    pr_sum_pval = mannKen(cumsum_precip)$p.value,
+    pr_sum_trend = mannKen(cumsum_precip)$sen.slope,
+    snow_sum_pval = mannKen(cumsum_snow)$p.value,
+    snow_sum_trend = mannKen(cumsum_snow)$sen.slope,
   )
 
 
@@ -119,16 +141,16 @@ ggplot() +
   ggplot2::geom_sf(data = na) +
   coord_sf(xlim = c(-126, -103), ylim = c(36, 50), expand = FALSE)+
   geom_point(
-    data = mlsp_clim %>% filter(season == 'fall', pr_pval >= 0.5), 
-    aes(x = long, y = lat, fill = pr_trend), 
+    data = mlsp_clim %>% filter(season == 'fall', pr_sum_pval >= 0.5), 
+    aes(x = long, y = lat, fill = pr_sum_trend), 
     size = 4, 
     pch =21, 
     stroke = 0.5,
     alpha = 0.6
   )+
   geom_point(
-    data = mlsp_clim %>% filter(season == 'fall', pr_pval <= 0.5), 
-    aes(x = long, y = lat, fill = pr_trend), 
+    data = mlsp_clim %>% filter(season == 'fall', pr_sum_pval <= 0.5), 
+    aes(x = long, y = lat, fill = pr_sum_trend), 
     size = 4, 
     pch =24, 
     stroke = 0.5,
@@ -150,10 +172,83 @@ ggplot() +
   )+
   guides(fill=guide_colorbar(ticks.colour = NA))
 
-ggsave(
-  here('output/pr_trend/fall_pr_trend.png'),
-  dpi = 300,
-  width = 6,
-  height = 6,
-  units = 'in'
+# ggsave(
+#   here('output/pr_trend/fall_pr_trend.png'),
+#   dpi = 300,
+#   width = 6,
+#   height = 6,
+#   units = 'in'
+# )
+
+
+# Test function -----------------------------------------------------------
+
+
+#Load map background
+
+
+map_func <- function(df, c_long, c_lat, pval, trend, sea_filt, legend_title, leg_pos) {
+  
+  #Define map
+  # na <- rnaturalearth::ne_countries(
+  #   scale = "medium", returnclass = "sf") %>%
+  #   select(name, continent, geometry) %>%
+  #   filter(continent == 'North America')
+  
+  na <- rnaturalearth::ne_states(
+    country = c('United States of America', 'Canada'), returnclass = "sf")
+  
+  #defin midpoint
+  mid <- 0
+  
+  #Generic map for trend with chosen variable
+  
+  ggplot() +
+    ggplot2::geom_sf(data = na) +
+    coord_sf(xlim = c_long, ylim = c_lat, expand = FALSE)+
+    geom_point(
+      data = df %>% filter(season == {{sea_filt}}, {{pval}} >= 0.5), 
+      aes(x = long, y = lat, fill = {{trend}}), 
+      size = 4, 
+      pch =21, 
+      stroke = 0.5,
+      alpha = 0.6
+    )+
+    geom_point(
+      data = df %>% filter(season == {{sea_filt}}, {{pval}} <= 0.5), 
+      aes(x = long, y = lat, fill = {{trend}}), 
+      size = 4, 
+      pch =24, 
+      stroke = 0.5,
+      alpha = 0.6
+    )+
+    scale_fill_gradient2(midpoint = mid, low = 'red', mid = 'white', high = 'blue', space = 'Lab')+
+    #scale_colour_gradient(low = 'blue', high = 'red', space = 'Lab')+
+    xlab("")+
+    ylab("")+
+    labs(fill = legend_title)+
+    theme_classic()+
+    theme(
+      legend.position = leg_pos,
+      legend.background = element_blank(),
+      text = element_text(
+        size = 15
+      )
+    )+
+    guides(fill=guide_colorbar(ticks.colour = NA))
+}
+
+map_func(
+  df = mlsp_clim, 
+  #full map
+  # c_long = c(-126, -103), 
+  # c_lat = c(36, 50), 
+  #PNW map
+  c_long = c(-126, -116.5),
+  c_lat = c(45.5, 49.5),
+  pval = snow_sum_pval, 
+  trend = snow_sum_trend, 
+  sea_filt = 'winter', 
+  legend_title = expression(paste("Snow \nmm yr"^"-1")),
+  leg_pos = c(1.05, 0.5)
 )
