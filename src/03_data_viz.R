@@ -25,9 +25,6 @@ clim <- read_csv(here('data/gridmet_clean.csv')) %>%
   #convert lake column to factor
   mutate(
     lake = as.factor(lake),
-    snow_cm = if_else(
-      tmean_c <= 0, pr_cm, 0
-    )
   ) %>% 
   arrange(
     lake
@@ -40,22 +37,56 @@ clim_season <- clim %>%
   #Add water year and seasonal variables
   mutate(
     w_year = if_else(
-      month(date) >= 10, year(date) +1, year(date)
+      month(date) >= 10, year(date)+1 , year(date)
     ),
     #Add seasons
     season = as.factor(
       if_else(
-        month(date) == 12 | month(date) == 1 | month(date) == 2, 'winter', 
+        month(date) == 12 | month(date) == 1 | month(date) == 2, 
+        'winter', 
         if_else(
-          month(date) == 3 | month(date) == 4 | month(date) == 5, 'spring',
+          month(date) == 3 | month(date) == 4 | month(date) == 5, 
+          'spring',
           if_else(
-            month(date) == 6 | month(date) == 7 | month(date) == 8, 'summer',
+            month(date) == 6 | month(date) == 7 | month(date) == 8, 
+            'summer',
             'fall'
           )
         )
       )
     )
-  ) %>%
+  ) 
+
+
+# 4. Annual summary stats and SD ------------------------------------------
+
+clim_sum_annual <- clim_season %>% 
+  #Get summaries of the lakes by water year and season 
+  #for each variable
+  group_by(lake, w_year) %>% 
+  summarise(
+    tmin_ann = min(tmin_c, na.rm = T),
+    tmax_ann = max(tmax_c, na.rm = T),
+    tmean_ann = mean(tmean_c, na.rm = T),
+    annual_pr_mm = sum(pr_mm, na.rm = T),
+    annual_snow_mm = sum(snow_mm, na.rm = T)
+  ) %>% 
+  group_by(lake) %>% 
+  mutate(
+    tmin_sd = sd(tmin_ann, na.rm = T),
+    tmax_sd = sd(tmax_ann, na.rm = T),
+    tmean_sd = sd(tmean_ann, na.rm = T),
+    pr_mean_mm = mean(annual_pr_mm, na.rm = T),
+    pr_sd = sd(annual_pr_mm, na.rm = T),
+    snow_mean_mm = mean(annual_snow_mm, na.rm = T),
+    snow_sd = sd(annual_snow_mm, na.rm = T)
+  )
+  
+
+# 5. Seasonal summary stats and SD ----------------------------------------
+
+
+clim_sum_seasonal <- clim_season %>% 
   #Get summaries of the lakes by water year and season 
   #for each variable
   group_by(lake, w_year, season) %>% 
@@ -63,22 +94,26 @@ clim_season <- clim %>%
     tmin_mean = mean(tmin_c, na.rm = T),
     tmax_mean = mean(tmax_c, na.rm = T),
     tmean_mean = mean(tmean_c, na.rm = T),
-    pr_mean_mm = mean(pr_cm, na.rm = T)*10,
-    cumsum_precip = sum(pr_mean_mm, na.rm = T),
-    snow_mean_mm = mean(snow_cm, na.rm = T)*10,
-    cumsum_snow = sum(snow_mean_mm, na.rm = T)
+    cumsum_pr = sum(pr_mm, na.rm = T),
+    pr_mean_mm = mean(cumsum_pr, na.rm = T),
+    cumsum_snow = sum(snow_mm, na.rm = T),
+    snow_mean_mm = mean(cumsum_snow, na.rm = T),
   ) %>% 
   group_by(lake, w_year) %>% 
   mutate(
-    annual_precip_mm = sum(cumsum_precip),
-    precip_frac = cumsum_precip/annual_precip_mm,
+    annual_pr_mm = sum(cumsum_pr),
+    precip_frac = cumsum_pr/annual_pr_mm,
     annual_snow_mm = sum(cumsum_snow),
     snow_frac = cumsum_snow/annual_snow_mm
+  ) %>% 
+  group_by(lake, w_year, season) %>% 
+  mutate(
+    snow_frac_mean = mean(snow_frac, na.rm = T)
   )
 
 # 4. Calculate means and trends -------------------------------------------
 
-clim_sum <- clim_season %>% 
+clim_trend <- clim_season %>% 
   #Means and trends calculated per lake
   group_by(lake, season) %>% 
   summarise(
@@ -112,14 +147,37 @@ mlsp <- read_csv(here('data/mlsp_site_metadata.csv')) %>%
     lake = as.factor(lake)
   )
 
-mlsp_clim <- mlsp %>% 
+mlsp_clim_annual <- mlsp %>% 
   full_join(
-    clim_sum,
+    clim_sum_annual,
     relationship = 'many-to-many'
+  ) %>% 
+  mutate(
+    elev_band = if_else(
+      elevation <= 1500, as.factor('low'),
+      if_else(
+        elevation > 1500 & elevation <=2500, as.factor('medium'), as.factor('high')
+      )
+    )
+  )
+
+mlsp_clim_seasonal <- mlsp %>% 
+  full_join(
+    clim_sum_seasonal,
+    relationship = 'many-to-many'
+  ) %>% 
+  mutate(
+    elev_band = if_else(
+      elevation <= 1500, as.factor('low'),
+      if_else(
+        elevation > 1500 & elevation <=2500, as.factor('medium'), as.factor('high')
+      )
+    )
   )
 
 #**Write cleaned and aggregated data to CSV----
-#write_csv(mlsp_clim, here('data/mlsp_clim.csv'))
+write_csv(mlsp_clim_annual, here('data/mlsp_clim_annual.csv'))
+write_csv(mlsp_clim_seasonal, here('data/mlsp_clim_seasonal.csv'))
 
 # 6. Simple viz -----------------------------------------------------------
 
@@ -187,7 +245,16 @@ ggplot() +
 #Load map background
 
 
-map_func <- function(df, c_long, c_lat, pval, trend, sea_filt, legend_title, leg_pos) {
+map_func <- function(
+    df, 
+    c_long, 
+    c_lat, 
+    pval, 
+    trend, 
+    sea_filt, 
+    legend_title, 
+    leg_pos
+  ) {
   
   #Define map
   # na <- rnaturalearth::ne_countries(
@@ -208,7 +275,7 @@ map_func <- function(df, c_long, c_lat, pval, trend, sea_filt, legend_title, leg
     coord_sf(xlim = c_long, ylim = c_lat, expand = FALSE)+
     geom_point(
       data = df %>% filter(season == {{sea_filt}}, {{pval}} >= 0.5), 
-      aes(x = long, y = lat, fill = {{trend}}), 
+      aes(x = long, y = lat, fill = {{trend}}, shape =  {{elev}}), 
       size = 4, 
       pch =21, 
       stroke = 0.5,
@@ -216,7 +283,7 @@ map_func <- function(df, c_long, c_lat, pval, trend, sea_filt, legend_title, leg
     )+
     geom_point(
       data = df %>% filter(season == {{sea_filt}}, {{pval}} <= 0.5), 
-      aes(x = long, y = lat, fill = {{trend}}), 
+      aes(x = long, y = lat, fill = {{trend}}, shape =  {{elev}}), 
       size = 4, 
       pch =24, 
       stroke = 0.5,
@@ -241,11 +308,17 @@ map_func <- function(df, c_long, c_lat, pval, trend, sea_filt, legend_title, leg
 map_func(
   df = mlsp_clim, 
   #full map
-  # c_long = c(-126, -103), 
-  # c_lat = c(36, 50), 
+  # c_long = c(-126, -103),
+  # c_lat = c(36, 50),
   #PNW map
-  c_long = c(-126, -116.5),
-  c_lat = c(45.5, 49.5),
+  # c_long = c(-126, -116.5),
+  # c_lat = c(45.5, 49.5),
+  #Sierra map
+  # c_long = c(-125, -114),
+  # c_lat = c(36, 42),
+  # #Rockies
+  c_long = c(-112, -104),
+  c_lat = c(36, 42),
   pval = snow_sum_pval, 
   trend = snow_sum_trend, 
   sea_filt = 'winter', 

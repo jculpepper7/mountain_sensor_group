@@ -31,8 +31,7 @@ clim_clean <- clim_raw %>%
   select(
     -c(index, geo),
     #precip is the daily sum in mm
-    #I convert to cm below
-    pr_cm = pr, 
+    pr_mm = pr, 
     #Temp vars are in Kelvin
     #I convert to Celsius below.
     tmin_c = tmmn,
@@ -43,10 +42,16 @@ clim_clean <- clim_raw %>%
   mutate(
     date = ymd(date),
     lake = as.factor(lake),
-    pr_cm = pr_cm / 10,
     tmin_c = tmin_c - 273.15,
     tmax_c = tmax_c - 273.15,
-    tmean_c = (tmin_c+tmax_c)/2
+    tmean_c = (tmin_c+tmax_c)/2,
+    #Calculating snow as in Smits et al., 2021 (doi:10.1029/2021JG006277)
+    snow_mm = if_else(
+      tmean_c < 0, pr_mm, 
+      if_else(
+        tmean_c >= 0 & tmean_c <= 6, pr_mm - 0.1678*tmean_c, 0 
+      )
+    )
   )
 
 
