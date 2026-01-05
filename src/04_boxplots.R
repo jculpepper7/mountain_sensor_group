@@ -15,6 +15,7 @@ library(rnaturalearthdata)
 # 2. Import data ----------------------------------------------------------
 
 annual <- read_csv(here('data/mlsp_clim_annual.csv')) %>% 
+  select(-c(lat, long, elevation, surf_area, max_depth)) %>% 
   mutate(
     lake = as.factor(lake),
     w_year = as.factor(w_year),
@@ -32,6 +33,22 @@ seasonal <- read_csv(here('data/mlsp_clim_seasonal.csv')) %>%
                             c('low','medium','high'))
   )
 
+site_df <- read_csv(here('data/site_metadata.csv')) %>% 
+  clean_names() %>% 
+  select(
+    -c(notes),
+    lake = name
+  ) %>% 
+  mutate(
+    range = as.factor(range),
+    lake = as.factor(lake),
+    biome = as.factor(biome)
+  )
+
+#Add metadata to annual and seasonal
+
+annual_df <- annual %>% 
+  inner_join(site_df)
 
 # 3. annual boxplot -------------------------------------------------------
 
@@ -39,37 +56,37 @@ seasonal <- read_csv(here('data/mlsp_clim_seasonal.csv')) %>%
 #Precip----
 ggplot()+
   geom_boxplot(
-    annual,
-    mapping = aes(x = elev_band, y = pr_sd),
+    annual_df,
+    mapping = aes(x = biome, y = pr_sd),
     outlier.shape = NA
   )+
   geom_jitter(
-    annual %>% 
+    annual_df %>% 
       group_by(lake) %>% 
       slice(1),
     mapping = aes(
-      x = elev_band, 
+      x = biome, 
       y = pr_sd, 
-      # color = surf_area
+      color = range
     ),
     size = 4,
     alpha = 0.6,
     position = position_jitter(width = 0.2)
   )+
-  scale_color_viridis_c()+
+  scale_color_viridis_d()+
   theme_classic()+
   #labs(color = 'Surface Area')
   xlab('Elevation Band')+
   ylab('Precip. Mean (mm)')
   
 
-ggsave(
-  here('output/boxplots/pr_sd_bxplt.png'),
-  dpi = 300,
-  width = 6,
-  height = 5,
-  units = 'in'
-)  
+# ggsave(
+#   here('output/boxplots/pr_sd_bxplt.png'),
+#   dpi = 300,
+#   width = 6,
+#   height = 5,
+#   units = 'in'
+# )  
 
 #Snow----
 
@@ -103,13 +120,13 @@ ggplot()+
   ylab('Snow Mean (mm)')
 
 
-ggsave(
-  here('output/boxplots/snow_mean_bxplt.png'),
-  dpi = 300,
-  width = 6,
-  height = 5,
-  units = 'in'
-)  
+# ggsave(
+#   here('output/boxplots/snow_mean_bxplt.png'),
+#   dpi = 300,
+#   width = 6,
+#   height = 5,
+#   units = 'in'
+# )  
 
 # Temp----
 
@@ -143,13 +160,13 @@ ggplot()+
   ylab('Temperature Mean (\u00B0C)')
 
 
-ggsave(
-  here('output/boxplots/temp_mean_bxplt.png'),
-  dpi = 300,
-  width = 6,
-  height = 5,
-  units = 'in'
-) 
+# ggsave(
+#   here('output/boxplots/temp_mean_bxplt.png'),
+#   dpi = 300,
+#   width = 6,
+#   height = 5,
+#   units = 'in'
+# ) 
 
 # Snow Fraction----
 
@@ -183,13 +200,13 @@ ggplot()+
   scale_y_continuous(labels = scales::percent)
 
 
-ggsave(
-  here('output/boxplots/snow_frac_winter_bxplt.png'),
-  dpi = 300,
-  width = 6,
-  height = 5,
-  units = 'in'
-) 
+# ggsave(
+#   here('output/boxplots/snow_frac_winter_bxplt.png'),
+#   dpi = 300,
+#   width = 6,
+#   height = 5,
+#   units = 'in'
+# ) 
 #Function----
 
 # bxplt_func <- function(

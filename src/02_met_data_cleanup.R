@@ -12,7 +12,8 @@ library(janitor)
 
 # 2. Import data ----------------------------------------------------------
 
-clim_raw <- read_csv(here('data/mlsp_gridmet_1995_2025.csv'))
+# clim_raw <- read_csv(here('data/mlsp_gridmet_1995_2025.csv'))
+clim_raw <- read_csv(here('data/mlsp_climate_data_1979_2025.csv'))
 
 
 # 3. Clean data -----------------------------------------------------------
@@ -21,15 +22,15 @@ clim_clean <- clim_raw %>%
   #remove characters from column names
   clean_names() %>% 
   #separate system_index into the index number and date
-  separate_wider_delim(
-    system_index,
-    delim = '_',
-    names = c('index', 'date')
-  ) %>% 
+  # separate_wider_delim(
+  #   system_index,
+  #   delim = '_',
+  #   names = c('index', 'date')
+  # ) %>% 
   #remove index (we'll use 'lake') and geo (not needed)
   #rename temp & precip to include units
   select(
-    -c(index, geo),
+    -c(system_index, geo),
     #precip is the daily sum in mm
     pr_mm = pr, 
     #Temp vars are in Kelvin
@@ -57,10 +58,60 @@ clim_clean <- clim_raw %>%
 
 # 4. Write clean data to CSV ----------------------------------------------
 
-write_csv(
-  clim_clean,
-  here('data/gridmet_clean.csv')
-)
+# write_csv(
+#   clim_clean,
+#   here('data/gridmet_clean_1979_2025.csv')
+# )
+
+
+# 5. Seasonal and cumulative data -----------------------------------------
+
+
+# **5a. Add seasons and annual cumulative sums ----------------------------
+
+clim_season <- clim_clean %>% 
+  mutate(
+    water_year = as.factor(
+      if_else(
+        month(date) >=10, year(date)+1, year(date)
+      )
+    ),
+    season = as.factor(
+      case_when(
+        month(date) %in% c(12,1,2) ~ 'winter',
+        month(date) %in% c(3,4,5) ~ 'spring',
+        month(date) %in% c(6,7,8) ~ 'summer',
+        month(date) %in% c(9,10,11) ~ 'autumn',
+      )
+    )
+  ) %>% 
+  group_by(lake, water_year) %>% 
+  mutate(
+    #Add the annual cumulative sum of precip and snow
+    pr_cumsum_mm = sum(pr_mm),
+    snow_cumsum_mm = sum(snow_mm)
+  ) %>% 
+  ungroup() %>% 
+  select(
+    lake, date, water_year, season, everything()
+  )
+
+
+# **5b. Get seasonal means ------------------------------------------------
+
+clim_means <- clim_season %>% 
+  group_by(lake, water_year, season) %>% 
+  summarise(
+    across(
+      where(is.numeric),
+      mean
+    )
+  )
+
+# write_csv(
+#   clim_means,
+#   here('data/gridmet_means_1979_2025.csv')
+# )
 
 
 

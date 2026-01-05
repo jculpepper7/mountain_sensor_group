@@ -176,8 +176,8 @@ mlsp_clim_seasonal <- mlsp %>%
   )
 
 #**Write cleaned and aggregated data to CSV----
-write_csv(mlsp_clim_annual, here('data/mlsp_clim_annual.csv'))
-write_csv(mlsp_clim_seasonal, here('data/mlsp_clim_seasonal.csv'))
+# write_csv(mlsp_clim_annual, here('data/mlsp_clim_annual.csv'))
+# write_csv(mlsp_clim_seasonal, here('data/mlsp_clim_seasonal.csv'))
 
 # 6. Simple viz -----------------------------------------------------------
 
