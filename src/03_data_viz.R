@@ -21,7 +21,7 @@ library(rnaturalearthdata)
 
 # 2. Import data ----------------------------------------------------------
 
-clim <- read_csv(here('data/gridmet_clean.csv')) %>% 
+clim <- read_csv(here('data/gridmet_clean_1979_2025.csv')) %>% 
   #convert lake column to factor
   mutate(
     lake = as.factor(lake),
