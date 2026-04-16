@@ -23,10 +23,22 @@ mtn_clim <- read_csv(
   )
 
 #Site metadata
-mlsp <- read_csv(here('data/mlsp_site_metadata.csv')) %>% 
+mlsp <- read_csv(here('data/site_metadata.csv')) %>% 
+  clean_names() %>% 
+  select(
+    -c(
+      contributors, bathymetry, met_station,
+      lake_position, glaciers, notes
+    )
+  ) %>%
   mutate(
-    lake = as.factor(lake)
-  )
+    lake = as.factor(name),
+    range = as.factor(range),
+    biome = as.factor(biome)
+  ) %>% 
+  select(-name)
+
+
 
 #Combine climate and site metadata
 mtn_df <- mlsp %>% 
@@ -41,13 +53,13 @@ mtn_df <- mlsp %>%
 #**5a. PCA Prep new----
 pca_prep <- mtn_df %>% 
   #Adjust season of interest for PCA
-  # filter(
-  #   season == 'autumn'
-  # ) %>% 
+  filter(
+    season == 'winter'
+  ) %>%
   #Need to remove non-numeric columns
   #Combining site name and date, then moving them to row names
   unite(
-    site_date, c(lake, water_year, season), sep = '_', remove = F
+    site_date, c(lake, water_year, season, range, biome), sep = '_', remove = F
   ) %>% 
   distinct(
     site_date, .keep_all = T
@@ -56,16 +68,17 @@ pca_prep <- mtn_df %>%
 #**5b. Combine PCA dataframe----
 pca_df <- pca_prep %>% 
   select(
-    -c(lake, water_year, season) 
+    -c(lake, water_year, season, range, biome) 
   ) %>% 
   column_to_rownames(var = 'site_date') %>% 
-  na.omit()# %>% 
-  # select(
-  #   # 1:5, #mrph vars
-  #   13,14,17, #temp vars
-  #   # 7,18, #Average seasonal daily rain and snow
-  #   19,20 #cumlative vars
-  # )
+  na.omit() %>% 
+  select(
+    # 1:5, #mrph vars
+    13,14,17, #temp vars
+    # 7,18, #Average seasonal daily rain and snow
+    # 19,
+    20 #cumlative vars
+  )
 
 #**5c. Normalize the variables----
 df_standard <- decostand(pca_df,"standardize")
@@ -99,7 +112,7 @@ site_scores <- tibble(as.data.frame(
          scaling = 2))[,1:2]) |>
   mutate(site_date = row.names(pca_df)) |>
   left_join(select(
-    pca_prep, site_date, lake, water_year, season)) |>
+    pca_prep, site_date, lake, water_year, season, range, biome)) |>
   #all_data, sample_id, collection_site, collect_date, layer)) |>
   unique() 
 
@@ -111,6 +124,9 @@ par_scores <- tibble(as.data.frame(
   mutate(variable = colnames(pca_df))
 
 #**5g. PCA plot final----
+
+arrow_scale = 0.1
+
 ggplot(par_scores, aes(x = PC1, y = PC2)) +
   # Draw axes along the zero intercept
   geom_hline(yintercept = 0) +
@@ -119,62 +135,72 @@ ggplot(par_scores, aes(x = PC1, y = PC2)) +
   geom_segment(aes(
     x = 0,
     y = 0,
-    xend = PC1,
-    yend = PC2),
+    xend = PC1*arrow_scale,
+    yend = PC2*arrow_scale),
     arrow = arrow(length = unit(0.1, "inches"))) +
   # Label the arrows
   # geom_text(aes(label = variable),
   #           nudge_x = 0.08,
   #           nudge_y = 0.1) +
   geom_text_repel(
-    aes(x = PC1, y = PC2, label = variable),
+    aes(x = PC1*arrow_scale, y = PC2*arrow_scale, label = variable),
     box.padding = unit(0.5, 'lines'),
     point.padding = unit(0.5, 'lines'),
     segment.color = NA
   )+
+  # stat_ellipse(
+  #   data = site_scores,
+  #   aes(x = PC1, y = PC2, fill = range),
+  #   geom = "polygon",
+  #   level = 0.68,
+  #   alpha = 0.25,
+  #   colour = NA
+  # ) +
   # Draw points representing the sites
   geom_point(data = site_scores,
              aes(x = PC1,
                  y = PC2,
-                 colour = lake,
+                 colour = biome,
                  # shape = season
                  ),
              size = 3,
-             alpha = 0.3) +
+             alpha = 0.5) +
   # scale_color_wa_d(
   #   palette = 'rainier',
   #   which = c('lake', 'lodge', 'ground'),
   #   labels = c('Paint Lake (Deep)','Paint Lake (Shallow)','Kempenfelt Bay')
   # )+
   scale_color_viridis_d()+
+  scale_fill_viridis_d()+
   theme_classic() +
   theme(
     axis.line = element_blank(),
     legend.title = element_blank(),
-    legend.position = 'none'
+    legend.position = 'bottom',
+    text = element_text(size = 15)
   ) +
   # ggtitle("Principal Component Analysis, scaling 2")+
-  xlab(paste0("PCA1 (40%)"))+ 
-  ylab(paste0("PCA2 (27%)")) 
+  xlab(paste0("PCA1 (72%)"))+ 
+  ylab(paste0("PCA2 (24%)")) 
 
 ggsave(
-  here('output/pca/pca_all.png'),
+  here('output/pca/pca_winter_biome.png'),
   dpi = 300,
   width = 6,
   height = 6,
   units = 'in'
 )
 
-ggplot(data = mtn_df)+
-  geom_point(
-    aes(x = snow_cumsum_mm, y = elevation, color = lake)
-  )+
-  scale_color_viridis_d()
-
-ggsave(
-  here('output/pca/pca_leg.png'),
-  dpi = 300,
-  width = 8,
-  height = 8,
-  units = 'in'
-)
+# ggplot(data = mtn_df)+
+#   geom_point(
+#     aes(x = snow_cumsum_mm, y = elevation, color = lake)
+#   )+
+#   scale_color_viridis_d()
+# 
+# ggsave(
+#   here('output/pca/pca_leg.png'),
+#   dpi = 300,
+#   width = 8,
+#   height = 8,
+#   units = 'in'
+# )
